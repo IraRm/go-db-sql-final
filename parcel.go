@@ -37,9 +37,9 @@ func (s ParcelStore) Get(number int) (Parcel, error) {
 	err := row.Scan(&p.Number, &p.Client, &p.Status, &p.Address, &p.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return p, fmt.Errorf("parcel with number %d not found", number)
+			return Parcel{}, fmt.Errorf("parcel not found")
 		}
-		return p, err
+		return Parcel{}, err
 	}
 
 	return p, nil
@@ -76,33 +76,58 @@ func (s ParcelStore) SetStatus(number int, status string) error {
 }
 
 func (s ParcelStore) SetAddress(number int, address string) error {
-	query := `UPDATE parcel SET address = ? WHERE number = ? AND status = 'registered'`
-	result, err := s.db.Exec(query, address, number)
+	var status string
+	checkStatus := `SELECT status FROM parcel WHERE number = ?`
+	err := s.db.QueryRow(checkStatus, number).Scan(&status)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("parcel does not exist")
+		}
 		return err
 	}
-	affectedRows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affectedRows == 0 {
+
+	if status != "registered" {
 		return fmt.Errorf("status is not 'registered'")
 	}
+
+	query := `UPDATE parcel SET address = ? WHERE number = ?`
+	_, err = s.db.Exec(query, address, number)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (s ParcelStore) Delete(number int) error {
-	query := `DELETE FROM parcel WHERE number = ? AND status = 'registered'`
+	var status string
+	checkStatusQuery := `SELECT status FROM parcel WHERE number = ?`
+	err := s.db.QueryRow(checkStatusQuery, number).Scan(&status)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("parcel with number %d does not exist", number)
+		}
+		return err
+	}
+
+	if status != "registered" {
+		return fmt.Errorf("status is not 'registered'")
+	}
+
+	query := `DELETE FROM parcel WHERE number = ?`
 	result, err := s.db.Exec(query, number)
 	if err != nil {
 		return err
 	}
+
 	affectedRows, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
+
 	if affectedRows == 0 {
-		return fmt.Errorf("status is not 'registered'")
+		return fmt.Errorf("no rows deleted")
 	}
+
 	return nil
 }
